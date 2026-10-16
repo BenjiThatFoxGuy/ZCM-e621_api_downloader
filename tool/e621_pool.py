@@ -259,16 +259,9 @@ def run(args):
     order = pool.get("post_ids") or []
     LOG.info("  pool \"%s\": %d posts, %s, category %s", pool.get("name"), len(order),
              "active" if pool.get("is_active", True) else "inactive", pool.get("category"))
+    #an inactive pool is fetched like any other: inactive only hints that the comic may be ended, which is
+    #the plugin's ended() to offer the updater and the person to overrule, not a reason to stop looking here
     skip = set(int(bit) for bit in args.skip.split(",") if bit.strip()) if args.skip else set()
-    if not pool.get("is_active", True):
-        #an inactive pool is one nobody is adding to any more, which is no reason not to take it the first time.
-        #on a later run there is nothing new to expect from it, unless it is asked for anyway
-        if not skip:
-            LOG.info("pool %s is marked inactive, and this is the first scrape of it: taking it anyway", number)
-        elif not args.allow_inactive:
-            LOG.info("pool %s is marked inactive and already taken; nothing to do. Tick \"Pool no longer active\" "
-                     "in the comic's settings to look for changes anyway", number)
-            return OK
     wanted = [(position, post) for position, post in enumerate(order, 1) if post not in skip]
     LOG.info("pool %s (%s): %d posts, %d new", number, pool["name"], len(order), len(wanted))
     if not wanted:
@@ -305,7 +298,9 @@ def main():
     params.add_argument("--output", default=".", help="The folder to write the pictures in.")
     params.add_argument("--skip", help="Post ids, comma separated, already taken and not to be fetched again.")
     params.add_argument("--skip-media", action="store_true", help="Leave out video (webm, mp4) and flash (swf) posts.")
-    params.add_argument("--allow-inactive", action="store_true", help="Look for changes in a pool marked inactive that has been taken before.")
+    #once the way to fetch an inactive pool already taken, which is now always done; still taken, so a command
+    #from an older plugin.py works
+    params.add_argument("--allow-inactive", action="store_true", help=argparse.SUPPRESS)
     params.add_argument("--username", help="The e621 account to log in as. Also E621_USERNAME; the key is E621_API_KEY.")
     params.add_argument("--user-agent", help="The User-Agent to send; {username} is put in. Also E621_USER_AGENT. "
                         "Default: " + DEFAULT_AGENT)

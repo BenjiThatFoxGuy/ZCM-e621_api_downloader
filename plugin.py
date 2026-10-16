@@ -20,8 +20,6 @@ def build_command(settings, state, staging):
                "--output", staging,
                #kept in the plugin's own folder, since the staging folder is cleared after every run
                "--log-dir", os.path.join(PLUGIN, "logs")]
-    if own.get("include_inactive"):
-        command.append("--allow-inactive")
     if own.get("skip_media"):
         command.append("--skip-media")
     known = state.get("known_posts") or []
@@ -42,10 +40,11 @@ def downloader():
 def ended(settings, state, taken):
     #complete when the site marks the pool inactive - nobody adding to it - and every post in it has been
     #taken. a post this account could not see is still missing, and marking the comic ended would mean it
-    #never came; so would a comic whose settings ask to keep checking an inactive pool
+    #never came. this is only a hint to the updater, which ticks ended on True; a person who unticks it has
+    #every run look at the pool again, as runs always do. False, as soon as the pool is active again, lets
+    #the updater mark it once more when it next goes inactive. a request that fails raises, which the
+    #updater takes as no answer at all
     own = settings.get("plugin") or {}
-    if own.get("include_inactive"):
-        return False
     tool = downloader()
     tool.setup_logging(os.path.join(PLUGIN, "logs"))
     host, number = tool.pool_id(settings["url"])

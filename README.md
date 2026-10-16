@@ -62,13 +62,17 @@ posts a page held. `logs/e621.log` here keeps the same with the times, and the J
 
 ## Inactive pools
 
-A pool marked inactive is always taken the first time. Once it is inactive and every post in it has been taken
-(videos and Flash aside, when the comic skips them), the plugin marks the comic **ended**, so the updater leaves
-it alone from then on. It does that once: untick ended and it is not marked again. This needs a
-ZC-ComicUpdater with plugin `ended()` support; an older one never asks, and the comic stays as it is.
+A pool marked inactive is fetched like any other. Inactive is only a hint: once the pool is inactive and every
+post in it has been taken (videos and Flash aside, when the comic skips them), the plugin tells the updater the
+comic is complete, and the updater ticks its **ended** box, so later updates leave it alone. Untick ended and
+the comic is checked every run again; it stays unticked while the pool stays inactive. If the pool comes back
+to life and later goes inactive again, the comic is marked ended again. This needs a ZC-ComicUpdater with
+plugin `ended()` support; an older one never asks, and the comic stays as it is.
 
-A pool still missing posts the account could not see is not marked ended, so they are tried again. Tick
-**Keep checking an inactive pool** to never mark the comic ended and keep looking for changes.
+A pool still missing posts the account could not see is not marked ended, so they are tried again.
+
+The **Keep checking an inactive pool** setting is gone; a comic that has it ticked can leave it, as it is no
+longer read.
 
 ## API format
 
