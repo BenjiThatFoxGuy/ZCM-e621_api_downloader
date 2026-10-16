@@ -4,19 +4,14 @@
   "version": 1,
   "about": "Content from e621 (or e926) through the site's official API, kept as a comic: a pool, one archive of pages, carrying on from the posts already taken.",
   "output": "pages",
+  "setup": [
+    {"key": "username", "type": "text", "label": "e621 username", "env": "E621_USERNAME", "help": "The account to log in as, for every e621 comic. Needed with the API key for posts the site hides from visitors."},
+    {"key": "api_key", "type": "secret", "label": "API key", "env": "E621_API_KEY", "help": "From the account's profile page, under Manage API Access."},
+    {"key": "user_agent", "type": "text", "label": "User-Agent", "env": "E621_USER_AGENT", "default": "ZC-ComicUpdater-e621-api/0.1 (by {username} on e621)", "help": "What the site is told is asking. {username} is replaced with the username above. The site blocks generic agents, so keep it specific."}
+  ],
   "fields": [
-    {"key": "url", "type": "url", "label": "Pool address",
-     "placeholder": "https://e621.net/pools/12345",
-     "help": "The pool's page. An e926.net address keeps to safe posts."},
-    {"key": "username", "type": "text", "label": "e621 username",
-     "help": "The account to log in as. Needed with the API key for posts the site hides from visitors."},
-    {"key": "api_key", "type": "text", "label": "API key",
-     "help": "From the account's profile page, under Manage API Access. Kept in this comic's settings, and never put in the log."},
-    {"key": "user_agent", "type": "text", "label": "User-Agent",
-     "default": "ZC-ComicUpdater-e621-api/0.1 (by {username} on e621)",
-     "help": "What the site is told is asking. {username} is replaced with the username above. The site blocks generic agents, so keep it specific."},
-    {"key": "include_inactive", "type": "flag", "label": "Keep checking an inactive pool",
-     "option": "--allow-inactive",
-     "help": "An inactive pool is always taken the first time, and the comic marked ended once every post in it is taken. Tick this to never mark it ended and keep looking for changes."}
+    {"key": "url", "type": "url", "label": "Pool address", "placeholder": "https://e621.net/pools/12345", "help": "The pool's page. An e926.net address keeps to safe posts."},
+    {"key": "skip_media", "type": "flag", "label": "Skip videos and Flash", "option": "--skip-media", "help": "Leave out webm, mp4 and swf posts. They are fetched by default: the comic's folder keeps each one, the reader plays it, and its archive holds a stand-in page. Needs a ZC-ComicUpdater that takes in videos and Flash from plugins; an older one drops them, and they are fetched again every run."},
+    {"key": "include_inactive", "type": "flag", "label": "Keep checking an inactive pool", "option": "--allow-inactive", "help": "An inactive pool is always taken the first time, and the comic marked ended once every post in it is taken. Tick this to never mark it ended and keep looking for changes."}
   ]
 }

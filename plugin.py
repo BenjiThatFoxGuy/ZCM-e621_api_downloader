@@ -1,32 +1,17 @@
 #the e621 plugin's own commands. tool/ is the downloader, run on a pool's address, writing its pages into
 #the folder the updater hands it. a pool has no chapters, so nothing is remembered by chapter: the posts
 #already taken are kept by their ids, and the next run leaves those out without asking the site for them.
+#the account, its API key and the User-Agent are the plugin's own settings (plugin.json's setup), set once
+#in the updater's Plugins dialog: the updater hands them to the downloader in its environment, never on its
+#command line, and to the functions here as settings["setup"].
 import importlib.util
-import json
 import os
 import re
 import sys
-import tempfile
 
 PLUGIN = os.path.dirname(os.path.abspath(__file__))
 #the downloader names each page <position>_<post id>.<ending>, and intake puts its own number in front
 TAKEN = re.compile(r"_(\d+)\.[A-Za-z0-9]+$")
-#where a run's credentials wait for the downloader, which deletes them as it reads them
-RUN = os.path.join(PLUGIN, ".run")
-
-
-def credentials_file(own):
-    #the account and agent as a file the downloader reads, not as arguments: the updater prints a command in
-    #the log and keeps it in the comic's run record, and an API key must not be in either. private to the
-    #user running the updater, and empty settings leave nothing to write
-    given = dict((key, own.get(key)) for key in ("username", "api_key", "user_agent") if own.get(key))
-    if not given:
-        return None
-    os.makedirs(RUN, exist_ok=True)
-    handle, path = tempfile.mkstemp(dir=RUN, suffix=".json")
-    with os.fdopen(handle, "w", encoding="utf-8") as f:
-        json.dump(given, f)
-    return path
 
 
 def build_command(settings, state, staging):
@@ -37,9 +22,8 @@ def build_command(settings, state, staging):
                "--log-dir", os.path.join(PLUGIN, "logs")]
     if own.get("include_inactive"):
         command.append("--allow-inactive")
-    credentials = credentials_file(own)
-    if credentials:
-        command += ["--credentials-file", credentials]
+    if own.get("skip_media"):
+        command.append("--skip-media")
     known = state.get("known_posts") or []
     if known:
         command += ["--skip", ",".join(str(post) for post in known)]
@@ -65,17 +49,19 @@ def ended(settings, state, taken):
     tool = downloader()
     tool.setup_logging(os.path.join(PLUGIN, "logs"))
     host, number = tool.pool_id(settings["url"])
-    site = tool.Site(host or "e621.net", own.get("username"), own.get("api_key"), own.get("user_agent"))
+    setup = settings.get("setup") or {}
+    site = tool.Site(host or "e621.net", setup.get("username"), setup.get("api_key"), setup.get("user_agent"))
     pool = site.json("/pools/{0}.json".format(number))
     if pool.get("is_active", True):
         return False
     missing = set(pool.get("post_ids") or []) - set(state.get("known_posts") or [])
-    if missing:
-        #a video or flash post is never fetched, so is never taken; it is not missing. asked only of a pool
-        #already inactive, and only until it is marked, so this costs a search now and then, not every run
+    if missing and own.get("skip_media"):
+        #a video or flash post this comic is set to skip is never fetched, so is never taken; it is not
+        #missing. asked only of a pool already inactive, and only until it is marked, so this costs a search
+        #now and then, not every run
         posts = tool.pool_posts(site, pool)
-        missing = set(post for post in missing if tool.post_file(posts.get(post) or {})[1] not in tool.NOT_PICTURES
-                      or post not in posts)
+        missing = set(post for post in missing if post not in posts
+                      or tool.post_file(posts[post])[1] not in tool.MEDIA)
     if missing:
         tool.LOG.info("pool %s is inactive, but %d of its posts have not been taken, so it is not marked ended",
                       number, len(missing))

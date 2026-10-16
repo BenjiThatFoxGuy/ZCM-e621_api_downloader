@@ -5,8 +5,5 @@ __pycache__/
 # the python packages the updater installs for it, and its lock while it does
 .venv/
 .venv.lock
-
-# a run's credentials, written for the downloader and deleted by it
-.run/
 # macOS folder metadata
 .DS_Store

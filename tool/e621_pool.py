@@ -4,11 +4,12 @@
 #it is a program of its own, as any plugin's would be: it shares nothing with the comic updater.
 #the API's rules, which this follows: a User-Agent that says who is asking, no more than one request a
 #second, and the account's own API key for anything the site hides from a visitor with none.
-#to log in, give it an account and that account's "API key" (from its profile): through the plugin's
-#settings, or by hand with --username and the E621_API_KEY environment variable.
+#to log in, give it an account and that account's "API key" (from its profile) in E621_USERNAME and
+#E621_API_KEY, and the agent in E621_USER_AGENT: the updater sets them from the plugin's settings. by hand,
+#--username and --user-agent do too; the key is only ever read from the environment.
 import argparse
+import hashlib
 import html
-import json
 import logging
 import logging.handlers
 import os
@@ -26,8 +27,10 @@ PAUSE = 1.1
 PAGE_SIZE = 320
 RETRIES = 4
 HOSTS = ("e621.net", "e926.net")
-#what a post can be that is not a picture, which a reader can't show as a page, so it is never fetched
-NOT_PICTURES = ("swf", "webm", "mp4")
+#the posts that are not still pictures: animations, fetched as they are. the updater keeps each as the
+#page in the comic's folder, the reader plays it, and an archive holds a stand-in page saying where it is.
+#a gif is a picture to every reader, so it is not one of these
+MEDIA = ("webm", "mp4", "swf")
 #the site's format is <program>/<version> (by <account> on e621); plugin.json's default for the setting is the same
 DEFAULT_AGENT = "ZC-ComicUpdater-e621-api/0.1 (by {username} on e621)"
 #the post endpoints' new response format (a bare array, files grouped under "files") is opt-in with v2=true
@@ -179,13 +182,44 @@ def comic_info(pool, host):
             + tag("LanguageISO", "en") + "</ComicInfo>\n").encode("utf-8")
 
 
-def save(site, url, path):
-    #written aside and moved into place, so a download cut off leaves nothing that looks like a page
-    response = site.get(url, stream=True)
-    with open(path + ".part", "wb") as f:
-        for chunk in response.iter_content(1 << 16):
-            f.write(chunk)
-    os.replace(path + ".part", path)
+def post_checks(post):
+    #what the site says the file is, (size, md5), to know a download is whole: a video is large enough that
+    #a connection dropped part way is a thing that happens. the new format has them under files.meta
+    meta = (post.get("files") or {}).get("meta") if "files" in post else post.get("file")
+    meta = meta or {}
+    return meta.get("size"), meta.get("md5")
+
+
+def save(site, url, path, size=None, md5=None):
+    #written aside and moved into place, so a download cut off leaves nothing that looks like a page; and
+    #checked against what the site says it is, so a short one is fetched again rather than kept
+    for attempt in range(1, RETRIES + 1):
+        response = site.get(url, stream=True)
+        digest, got = hashlib.md5(), 0
+        try:
+            with open(path + ".part", "wb") as f:
+                for chunk in response.iter_content(1 << 16):
+                    f.write(chunk)
+                    digest.update(chunk)
+                    got += len(chunk)
+        except requests.RequestException as error:
+            LOG.warning("download of %s broke off after %d bytes: %s: %s", url, got, type(error).__name__, error)
+        else:
+            wrong = ("{0} bytes, not {1}".format(got, size) if size and got != size
+                     else "md5 {0}, not {1}".format(digest.hexdigest(), md5) if md5 and digest.hexdigest() != md5
+                     else None)
+            if not wrong:
+                os.replace(path + ".part", path)
+                LOG.info("saved %s, %d bytes%s", os.path.basename(path), got, ", md5 checked" if md5 else "")
+                return
+            LOG.warning("download of %s came out wrong: %s", url, wrong)
+        if attempt < RETRIES:
+            time.sleep(5 * attempt)
+    try:
+        os.remove(path + ".part")
+    except OSError:
+        pass
+    raise Failed("could not download {0} whole in {1} tries; the next run will try again".format(url, RETRIES))
 
 
 def setup_logging(folder):
@@ -205,24 +239,12 @@ def setup_logging(folder):
 
 
 def credentials(args):
-    #the account and agent to ask as: from the file the plugin wrote them to (read, then deleted, since the
-    #updater logs a command's arguments and the key must not be among them), then the command line, then the
-    #environment for running this by hand
-    given = {}
-    if args.credentials_file:
-        try:
-            with open(args.credentials_file, encoding="utf-8") as f:
-                given = json.load(f)
-        except (OSError, ValueError) as error:
-            raise Failed("could not read the credentials the plugin left: {0}".format(error))
-        finally:
-            try:
-                os.remove(args.credentials_file)
-            except OSError:
-                pass
-    return (given.get("username") or args.username or os.environ.get("E621_USERNAME") or None,
-            given.get("api_key") or os.environ.get("E621_API_KEY") or None,
-            given.get("user_agent") or args.user_agent or None)
+    #the account, its key and the agent to ask as: from the environment, which is how the updater hands over
+    #the plugin's settings, or from the command line when run by hand. the key has no option, since a
+    #command line is seen in a process list and the updater writes it into its log
+    return (args.username or os.environ.get("E621_USERNAME") or None,
+            os.environ.get("E621_API_KEY") or None,
+            args.user_agent or os.environ.get("E621_USER_AGENT") or None)
 
 
 def run(args):
@@ -266,11 +288,11 @@ def run(args):
             why = "gone from the pool's posts" if post is None else "has no file for this account"
             LOG.warning("skipping post %s: %s", post_id, why)
             continue
-        if ext in NOT_PICTURES:
-            #not a picture, which a reader can't show as a page
-            LOG.info("skipping post %s: a %s, not a picture", post_id, ext)
+        if ext in MEDIA and args.skip_media:
+            LOG.info("skipping post %s: a %s, and this comic skips videos and flash", post_id, ext)
             continue
-        save(site, url, os.path.join(args.output, "{0:05d}_{1}.{2}".format(position, post_id, ext)))
+        size, md5 = post_checks(post)
+        save(site, url, os.path.join(args.output, "{0:05d}_{1}.{2}".format(position, post_id, ext)), size, md5)
         saved += 1
         LOG.info("fetched post %s (%d/%d)", post_id, saved, len(wanted))
     LOG.info("done: %d of %d new posts fetched", saved, len(wanted))
@@ -282,12 +304,11 @@ def main():
     params.add_argument("url", help="The pool's address, https://e621.net/pools/12345, or its number.")
     params.add_argument("--output", default=".", help="The folder to write the pictures in.")
     params.add_argument("--skip", help="Post ids, comma separated, already taken and not to be fetched again.")
+    params.add_argument("--skip-media", action="store_true", help="Leave out video (webm, mp4) and flash (swf) posts.")
     params.add_argument("--allow-inactive", action="store_true", help="Look for changes in a pool marked inactive that has been taken before.")
-    params.add_argument("--username", help="The e621 account to log in as. Also E621_USERNAME.")
-    params.add_argument("--user-agent", help="The User-Agent to send; {username} is put in. Default: " + DEFAULT_AGENT)
-    params.add_argument("--credentials-file", help="A JSON file of username, api_key and user_agent, deleted once "
-                        "read. The API key has no option of its own, so it is not seen in a process list; "
-                        "by hand, set E621_API_KEY.")
+    params.add_argument("--username", help="The e621 account to log in as. Also E621_USERNAME; the key is E621_API_KEY.")
+    params.add_argument("--user-agent", help="The User-Agent to send; {username} is put in. Also E621_USER_AGENT. "
+                        "Default: " + DEFAULT_AGENT)
     params.add_argument("--log-dir", help="Where to keep e621.log: every request and response, and the posts that could not be fetched.")
     args = params.parse_args()
     setup_logging(args.log_dir)
