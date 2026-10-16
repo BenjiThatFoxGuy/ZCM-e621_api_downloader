@@ -32,7 +32,7 @@ HOSTS = ("e621.net", "e926.net")
 #a gif is a picture to every reader, so it is not one of these
 MEDIA = ("webm", "mp4", "swf")
 #the site's format is <program>/<version> (by <account> on e621); plugin.json's default for the setting is the same
-DEFAULT_AGENT = "ZC-ComicUpdater-e621-api/0.1 (by {username} on e621)"
+DEFAULT_AGENT = "ZC-ComicUpdater-e621-api/0.1 (by BenjiThatFoxGuy on e621)"
 #the post endpoints' new response format (a bare array, files grouped under "files") is opt-in with v2=true
 #until the site makes it the default, which it has said is December 2026, and the old format goes in May
 #2027. asked for until the end of December, so a switchover that comes late still finds this asking; after
