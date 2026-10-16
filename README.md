@@ -9,7 +9,7 @@ e926) up to date, a pool for now, through the site's official API. The downloade
 Clone it into the updater's config folder under the name `e621-api`:
 
 ```sh
-git clone https://github.com/<you>/ZCM-e621_api_downloader.git config/plugins/e621-api
+git clone https://github.com/BenjiThatFoxGuy/ZCM-e621_api_downloader.git config/plugins/e621-api
 ```
 
 ## Logging in
